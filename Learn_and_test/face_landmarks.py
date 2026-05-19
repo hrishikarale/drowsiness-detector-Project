@@ -6,6 +6,8 @@ import numpy as np
 
 import time # this is step 6 prt 1
 
+from ear_calculator import get_eye_coords, calculate_EAR
+
 #-------------------------------------
 
 #Initialise MediaPipe (outside the loop)------
@@ -29,6 +31,13 @@ if not cap.isOpened():
     print("Error: can't open webcam")
     exit()
 #-------------------------------------------
+
+LEFT_EYE_IDX = [33, 160, 158, 133, 153, 144]
+RIGHT_EYE_IDX = [362, 385, 387, 263, 373, 380]
+
+#Threashold value and counter for aleart
+EAR_THRESHOLD = 0.25
+closed_frames = 0
 
 #step 5 prt 1 : frame counter 
 frame_count = 0
@@ -57,21 +66,59 @@ while True:
                 y_px = int(lm.y * h)
                 cv2.circle(frame, (x_px,y_px), 1, (0,255,0), -1)
             
-            #Step 4: 6 eye landmarks - red, larger
-            LEFT_EYE = [33, 160, 158, 133, 153, 144]
-            for idx in LEFT_EYE:
-                lm = face_lms.landmark[idx]
-                x_px = int(lm.x * w)
-                y_px = int(lm.y * h)
-                cv2.circle(frame, (x_px, y_px,), 3, (0,0,255), -1)
+            # #Step 4: 6 eye landmarks - red, larger
+            # LEFT_EYE = [33, 160, 158, 133, 153, 144]
+            # for idx in LEFT_EYE:
+            #     lm = face_lms.landmark[idx]
+            #     x_px = int(lm.x * w)
+            #     y_px = int(lm.y * h)
+            #     cv2.circle(frame, (x_px, y_px,), 3, (0,0,255), -1)
             #----------------------------------------------
-    
+
+            left_coords = get_eye_coords(face_lms.landmark, LEFT_EYE_IDX, w, h)
+            # print(f"Left eye coords: {left_coords}")
+
+            #calculate and display live EAR:
+            left_coords = get_eye_coords(face_lms.landmark, LEFT_EYE_IDX, w, h)
+            right_coords = get_eye_coords(face_lms.landmark, RIGHT_EYE_IDX,w, h)
+            left_ear = calculate_EAR(left_coords)
+            right_ear = calculate_EAR(right_coords)
+            ear = (left_ear + right_ear) / 2.0
+            ear_color = (0,0,255) if ear < 0.25 else (0,255,255)
+
+            eye_color = (0,0,255) if ear < EAR_THRESHOLD else (0,255,0)
+
+            for coords in [left_coords, right_coords]:
+                pts = np.array(coords, np.int32)
+                pts = pts.reshape((-1, 1, 2))
+                cv2.polylines(frame, [pts], True, eye_color, 1)
+
+            if ear < EAR_THRESHOLD:
+                closed_frames += 1
+            else:
+                closed_frames = 0
+            cv2.putText(frame, f"Closed frames: {closed_frames}",
+                        (10,160), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+            
+            if closed_frames >= 20:
+                cv2.rectangle(frame, (0,0), (w,80), (0,0,200), -1)
+                cv2.putText(frame, "DROWSY DETECTED",
+                            (80, 55), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
+            elif closed_frames > 0:
+                cv2.rectangle(frame, (0,0),(w,h), (0,165,255), 3)
+            else:
+                cv2.rectangle(frame,(0,0), (w,h), (0,255,0), 3)
+
+            cv2.putText(frame, f"EAR: {ear:.2f}",
+                        (10,135), cv2.FONT_HERSHEY_SIMPLEX, 0.7, ear_color, 2)
+
+
     #step 5 prt 2 : get 6 coordinate pairs and left eye squint
     frame_count += 1 
     if frame_count % 30 == 0 and results.multi_face_landmarks:
         print(f"\n---- Frame {frame_count} -----")
         face_lms = results.multi_face_landmarks[0]
-        for i, idx in enumerate(LEFT_EYE):
+        for i, idx in enumerate(LEFT_EYE_IDX):
             lm = face_lms.landmark[idx]
             x_px = int(lm.x * w)
             y_px = int(lm.y * h)
