@@ -8,6 +8,9 @@ import time # this is step 6 prt 1
 
 from ear_calculator import get_eye_coords, calculate_EAR, calculate_MAR, MOUTH_IDX, MOUTH_OUTLINE
 
+#TF imports
+import tensorflow as tf
+
 #-------------------------------------
 
 #Initialise MediaPipe (outside the loop)------
@@ -53,6 +56,17 @@ prev_time = time.time()
 
 mar = 0.0 # initialising MAR
 
+#Load CNN model ---------------------------
+model = tf.keras.models.load_model(r"models\eye_state_classifier.h5")
+# Warm up
+dummy = np.zeros((1, 24, 24, 1), dtype=np.float32)
+model.predict(dummy, verbose=0)
+print("CNN model loaded and warmed up.")
+#------------------------------------------------
+
+#CNN state variable
+cnn_closed_frames = 0
+
 #The main loop-----------------------------
 while True:
     ret, frame = cap.read()
@@ -89,7 +103,7 @@ while True:
             left_ear = calculate_EAR(left_coords)
             right_ear = calculate_EAR(right_coords)
             ear = (left_ear + right_ear) / 2.0
-            ear_color = (0,0,255) if ear < 0.15 else (0,255,255)
+            ear_color = (0,0,255) if ear < EAR_THRESHOLD else (0,255,0)
             eye_color = (0,0,255) if ear < EAR_THRESHOLD else (0,255,0)
             cv2.putText(frame, f"EAR: {ear:.2f}",
                         (10,50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, ear_color, 1)
@@ -106,6 +120,36 @@ while True:
             cv2.putText(frame, f"Closed frames: {closed_frames}",
                         (10,125), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 1)
             
+            #CNN eye state detection
+            xs = [int(face_lms.landmark[i].x*w) for i in LEFT_EYE_IDX]
+            ys = [int(face_lms.landmark[i].y*h) for i in LEFT_EYE_IDX]
+            x1, x2 = max(min(xs)-5, 0), min(max(xs)+5, w)
+            y1, y2 = max(min(ys)-5, 0), min(max(ys)+5, h)
+
+            eye_region = frame[y1:y2, x1:x2]
+
+            if eye_region.size > 0:
+                eye_small  = cv2.resize(eye_region, (24, 24))
+                eye_grey   = cv2.cvtColor(eye_small, cv2.COLOR_BGR2GRAY)
+                eye_input  = eye_grey.reshape(1, 24, 24, 1).astype(np.float32) / 255.0
+                eye_tensor = tf.constant(eye_input, dtype=tf.float32)
+                cnn_pred   = float(model(eye_tensor, training=False)[0][0])
+                cnn_closed = cnn_pred < 0.5
+                
+                if cnn_closed:
+                    cnn_closed_frames += 1
+                else:
+                    cnn_closed_frames = 0
+
+                cnn_col = (0,0,255) if cnn_closed else (0,255,0)
+                cv2.putText(frame, f"CNN: {'CLOSED' if cnn_closed else 'OPEN'} ({cnn_pred:.2f})",
+                (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.6, cnn_col, 1) 
+                cv2.putText(frame, f"CNN frames: {cnn_closed_frames}/20",
+                (10, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 1)
+
+
+
+
             #--------------------------------------------------
             #mouth coords and live value
             mouth_coords = get_eye_coords(face_lms.landmark, MOUTH_IDX, w, h)
@@ -195,8 +239,11 @@ while True:
         cv2.putText(frame, "Face: Not DETECTED",
                     (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1)    
         
-    eye_alert = closed_frames >= 20
-    yawn_alert = yawn_frames >= 90
+    if not results.multi_face_landmarks:
+        cnn_closed_frames = 0
+
+    eye_alert = (closed_frames >= 20) or (cnn_closed_frames >= 20)
+    yawn_alert = yawn_frames >= 15
     high_yawn = yawns_per_min >= 3
     if high_yawn:
         alert_level = "CRITICAL"
