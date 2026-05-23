@@ -39,7 +39,7 @@ print(f"EAR: {ear:.4f}") #should be ~ 0.30
 
 #This Section is for MAR
 
-MOUTH_IDX = [60, 40, 270, 0, 291, 375, 314, 146]
+MOUTH_IDX = [61, 40, 270, 0, 291, 375, 314, 146]
 MOUTH_OUTLINE = [
         # OUTER UPPER LIP
     61, 185, 40, 39, 37, 0, 267,
@@ -62,7 +62,7 @@ def calculate_MAR(mouth_points):
     #3 vertical distances: upper lip paired with lower lip
     A = euclidean_distance(mouth_points[1], mouth_points[7])
     B = euclidean_distance(mouth_points[2], mouth_points[6])
-    C = euclidean_distance(mouth_points[2], mouth_points[5])
+    C = euclidean_distance(mouth_points[3], mouth_points[5])
     #Horizontal distance: left corner to right corner
     D = euclidean_distance(mouth_points[0], mouth_points[4])
     #MAR Formula - 3 verticals / 3*horizontal

@@ -36,7 +36,7 @@ LEFT_EYE_IDX = [33, 160, 158, 133, 153, 144]
 RIGHT_EYE_IDX = [362, 385, 387, 263, 373, 380]
 
 #Threashold value and counter for aleart
-EAR_THRESHOLD = 0.15
+EAR_THRESHOLD = 0.25
 closed_frames = 0
 MAR_THRESHOLD = 0.53
 yawn_frames = 0
@@ -147,7 +147,7 @@ while True:
             )
             
             #Yawn count per min
-            if yawn_frames >= 90 and not yawns_in_progress:
+            if yawn_frames >= 15 and not yawns_in_progress:
                 yawn_timestamps.append(time.time())
                 yawns_in_progress = True
             elif yawn_frames == 0:
