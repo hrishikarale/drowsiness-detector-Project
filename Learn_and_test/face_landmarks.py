@@ -3,6 +3,8 @@
 import cv2
 import mediapipe as mp 
 import numpy as np 
+import pygame
+import threading
 
 import time # this is step 6 prt 1
 
@@ -63,6 +65,28 @@ dummy = np.zeros((1, 24, 24, 1), dtype=np.float32)
 model.predict(dummy, verbose=0)
 print("CNN model loaded and warmed up.")
 #------------------------------------------------
+
+# ── Audio setup ───────────────────────────────────────
+def generate_beep(freq=1000, duration=0.5, sr=44100):
+    t    = np.linspace(0, duration, int(sr * duration), endpoint=False)
+    wave = np.sin(2 * np.pi * freq * t)
+    wave = (wave * 32767).astype(np.int16)
+    wave = np.column_stack([wave, wave])
+    return pygame.mixer.Sound(buffer=wave)
+
+pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+alarm_sound = generate_beep(freq=1000, duration=0.5)
+alarm_sound.play()   # startup test beep — confirms audio works
+print("Audio initialised — startup beep played.")
+# ── Cooldown ──────────────────────────────────────────
+last_alarm_time = 0
+ALARM_COOLDOWN  = 3.0
+
+#replacing Solid Rectangles
+def draw_overlay(frame, x1, y1, x2, y2, color, alpha=0.5):
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), color, -1)
+    cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
 #CNN state variable
 cnn_closed_frames = 0
@@ -242,7 +266,7 @@ while True:
     if not results.multi_face_landmarks:
         cnn_closed_frames = 0
 
-    eye_alert = (closed_frames >= 20) or (cnn_closed_frames >= 20)
+    eye_alert = (closed_frames >= 20) and (cnn_closed_frames >= 20)
     yawn_alert = yawn_frames >= 15
     high_yawn = yawns_per_min >= 3
     if high_yawn:
@@ -255,32 +279,74 @@ while True:
         alert_level = "YAWN"
     else: alert_level = "SAFE"
 
+
+    #Solid Block 
+    # if alert_level == "CRITICAL":
+    #     cv2.rectangle(frame, (0,h-70), (w,h), (150,0,150), -1)
+    #     cv2.putText(frame, f"CRITICAL - {yawns_per_min} YAWNS/MIN",
+    #                 (60, h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
+    #     cv2.rectangle(frame, (0,0), (w,h), (150,0,150), 3)
+
+    # elif alert_level == "COMPOUND":
+    #     cv2.rectangle(frame, (0,h-70), (w,h), (180,0,180), -1)
+    #     cv2.putText(frame, "COMPOUND ALERT - EYES + YAWN",
+    #                 (60,h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
+    #     cv2.rectangle(frame, (0,0), (w,h), (180,0,180), 3)
+
+    # elif alert_level == "EYE":
+    #     cv2.rectangle(frame, (0, h-70), (w,h), (0,0,200), -1)
+    #     cv2.putText(frame, "DROWSY DETECTED",
+    #                 (100,h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
+    #     cv2.rectangle(frame, (0,0), (w,h), (0,0,200), 3)
+
+    # elif alert_level == "YAWN":
+    #     cv2.rectangle(frame, (0,h-70), (w,h), (0,100,200), -1)
+    #     cv2.putText(frame, "YAWN DETECTED",
+    #                 (130,h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
+    #     cv2.rectangle(frame, (0,0), (w,h), (0,165,255), 3)
+    
+    # else:
+    #     cv2.rectangle(frame, (0,0), (w,h), (0,200,0), 2)
+
+    #Transparent Block
     if alert_level == "CRITICAL":
-        cv2.rectangle(frame, (0,h-70), (w,h), (150,0,150), -1)
+        draw_overlay(frame, 0, h-70, w, h, (150,0,150), alpha=0.7)
         cv2.putText(frame, f"CRITICAL - {yawns_per_min} YAWNS/MIN",
-                    (60, h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
+                    (160, h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
         cv2.rectangle(frame, (0,0), (w,h), (150,0,150), 3)
 
     elif alert_level == "COMPOUND":
-        cv2.rectangle(frame, (0,h-70), (w,h), (180,0,180), -1)
+        draw_overlay(frame, 0, h-70, w, h, (180,0,180), alpha=0.7)
         cv2.putText(frame, "COMPOUND ALERT - EYES + YAWN",
                     (60,h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
         cv2.rectangle(frame, (0,0), (w,h), (180,0,180), 3)
 
     elif alert_level == "EYE":
-        cv2.rectangle(frame, (0, h-70), (w,h), (0,0,200), -1)
+        draw_overlay(frame, 0, h-70, w, h, (0,0,200), alpha=0.7)
         cv2.putText(frame, "DROWSY DETECTED",
-                    (100,h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
+                    (190,h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
         cv2.rectangle(frame, (0,0), (w,h), (0,0,200), 3)
 
     elif alert_level == "YAWN":
-        cv2.rectangle(frame, (0,h-70), (w,h), (0,100,200), -1)
+        draw_overlay(frame, 0, h-70, w, h, (0,100,200), alpha=0.7)
         cv2.putText(frame, "YAWN DETECTED",
-                    (130,h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
+                    (200,h-25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
         cv2.rectangle(frame, (0,0), (w,h), (0,165,255), 3)
-    
+
     else:
         cv2.rectangle(frame, (0,0), (w,h), (0,200,0), 2)
+
+    # ── Alarm with cooldown ───────────────────────────────
+    if alert_level != "SAFE":
+        now_t = time.time()
+        if now_t - last_alarm_time > ALARM_COOLDOWN:
+            threading.Thread(
+                target=lambda: alarm_sound.play(),
+                daemon=True
+            ).start()
+            last_alarm_time = now_t
+    else:
+        alarm_sound.stop()
 
 
     cv2.imshow('Face Landmarks', frame)
